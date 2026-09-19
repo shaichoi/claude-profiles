@@ -14,10 +14,14 @@
 #   계정과 무관한 항목(설정, 대화 기록, 기억, 플러그인 등)은 ~/.claude 로
 #   심볼릭 링크하므로 계정을 바꿔도 --continue 와 기억이 유지됩니다.
 
-CLAUDE_PROFILES_VERSION="1.0.0"
+CLAUDE_PROFILES_VERSION="1.1.0"
 
 CLAUDE_PROFILE_ROOT="${CLAUDE_PROFILE_ROOT:-$HOME/.claude-profiles}"
 export CLAUDE_PROFILE_ROOT
+
+# 이 패키지가 설치된 위치. install.sh 가 rc 블록에 넣어 줍니다.
+CLAUDE_PROFILES_HOME="${CLAUDE_PROFILES_HOME:-$HOME/.local/share/claude-profiles}"
+export CLAUDE_PROFILES_HOME
 
 # 기본 프로필(~/.claude)에 붙일 이름. 계정 이름으로 부르고 싶을 때 씁니다.
 #   export CLAUDE_PROFILE_DEFAULT_NAME=work-main
@@ -244,7 +248,16 @@ claude-profiles() {
   case "$1" in
     -q | --quick) quick=1 ;;
     -h | --help)
-      printf '%s\n' "사용법: claude-profiles [-q]   (-q 는 계정 조회를 건너뜀)"
+      printf '%s\n' "사용법: claude-profiles [-q|-v]   (-q 계정 조회 생략, -v 버전)"
+      return 0 ;;
+    -v | --version)
+      printf 'claude-profiles %s\n' "$CLAUDE_PROFILES_VERSION"
+      printf '  스크립트   : %s\n' "$CLAUDE_PROFILES_HOME/claude-profiles.sh"
+      printf '  프로필 데이터: %s\n' "$CLAUDE_PROFILE_ROOT"
+      if [ -f "$CLAUDE_PROFILES_HOME/install-info" ]; then
+        sed -n 's/^source=/  설치 출처   : /p; s/^installed=/  설치 시각   : /p' \
+          "$CLAUDE_PROFILES_HOME/install-info"
+      fi
       return 0 ;;
   esac
   active="$(_claude_profile_name)"
@@ -292,6 +305,59 @@ if [ "$CLAUDE_PROFILE_DEFAULT_NAME" != "$(_claude_profile_default_name)" ]; then
   printf '%s\n' "claude-profiles: CLAUDE_PROFILE_DEFAULT_NAME='$CLAUDE_PROFILE_DEFAULT_NAME' 을 쓸 수 없어 default 를 씁니다." >&2
   printf '%s\n' "  (이름 규칙에 어긋나거나 $CLAUDE_PROFILE_ROOT 에 같은 이름의 프로필이 있습니다.)" >&2
 fi
+
+# 설치 출처에서 다시 받아 재설치합니다. 설치는 멱등이라 여러 번 해도 안전합니다.
+claude-profiles-update() {
+  local info src url path
+  info="$CLAUDE_PROFILES_HOME/install-info"
+  if [ ! -f "$info" ]; then
+    printf '%s\n' "설치 정보를 찾을 수 없습니다: $info" >&2
+    printf '%s\n' "저장소에서 ./install.sh 를 다시 실행하세요." >&2
+    return 1
+  fi
+  src="$(sed -n 's/^source=//p' "$info" | head -1)"
+  case "$src" in
+    url:*)
+      url="${src#url:}"
+      printf '%s\n' "내려받는 중: $url"
+      # 캐시된 예전 파일을 받지 않도록 쿼리를 붙입니다.
+      if command -v curl >/dev/null 2>&1; then
+        curl -fsSL "$url?t=$(date +%s)" | sh -s -- --no-prompt --prefix "$CLAUDE_PROFILES_HOME" || return 1
+      elif command -v wget >/dev/null 2>&1; then
+        wget -qO- "$url?t=$(date +%s)" | sh -s -- --no-prompt --prefix "$CLAUDE_PROFILES_HOME" || return 1
+      else
+        printf '%s\n' "curl 또는 wget 이 필요합니다." >&2
+        return 1
+      fi
+      ;;
+    git:*)
+      path="${src#git:}"
+      if [ ! -d "$path" ]; then
+        printf '%s\n' "저장소를 찾을 수 없습니다: $path" >&2
+        return 1
+      fi
+      printf '%s\n' "저장소 갱신: $path"
+      git -C "$path" pull --ff-only || {
+        printf '%s\n' "git pull 실패. 저장소에서 직접 정리한 뒤 다시 시도하세요." >&2
+        return 1
+      }
+      "$path/install.sh" --no-prompt --prefix "$CLAUDE_PROFILES_HOME" || return 1
+      ;;
+    dir:*)
+      path="${src#dir:}"
+      if [ ! -x "$path/install.sh" ]; then
+        printf '%s\n' "설치 스크립트를 찾을 수 없습니다: $path/install.sh" >&2
+        return 1
+      fi
+      "$path/install.sh" --no-prompt --prefix "$CLAUDE_PROFILES_HOME" || return 1
+      ;;
+    *)
+      printf '%s\n' "알 수 없는 설치 출처: $src" >&2
+      return 1 ;;
+  esac
+  printf '%s\n' "업데이트 완료. 새 셸을 열거나 rc 를 다시 읽으세요."
+  return 0
+}
 
 # ---------------------------------------------------------------- 자동 완성
 # 셸 전용 문법은 eval 안에 둡니다. 반대쪽 셸은 파싱조차 하지 않습니다.

@@ -36,6 +36,22 @@ Claude Code는 `CLAUDE_CONFIG_DIR` 환경변수로 설정 디렉터리를 정합
 
 ## 설치
 
+한 줄이면 됩니다. 인터넷이 되는 서버라면 저장소를 받지 않아도 설치됩니다.
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/shaichoi/claude-profiles/main/dist/install-standalone.sh | sh
+```
+
+`dist/install-standalone.sh`는 라이브러리와 제거 스크립트를 안에 품은 자립형
+단일 파일입니다(`bundle.sh`가 만듭니다). 파이프로 실행해도 터미널이 있으면
+기본 프로필 이름을 물어봅니다. 옵션을 주려면 `-s --`를 붙이세요.
+
+```sh
+curl -fsSL <같은 URL> | sh -s -- --default-name work-main
+```
+
+저장소를 받아서 설치해도 됩니다. 이쪽은 테스트까지 함께 받습니다.
+
 ```sh
 git clone git@github.com:shaichoi/claude-profiles.git
 cd claude-profiles
@@ -45,9 +61,10 @@ cd claude-profiles
 설치 스크립트가 하는 일:
 
 1. `claude` 존재 확인, 버전 출력, 임시 설정 디렉터리로 실제 동작 확인
-2. `claude-profiles.sh`를 `~/.local/share/claude-profiles/`에 복사
+2. `claude-profiles.sh`와 `uninstall.sh`를 `~/.local/share/claude-profiles/`에 복사
 3. 터미널에서 직접 실행하면 기본 프로필을 부를 이름을 물어봄 (Enter 는 기존값 유지)
 4. `~/.zshrc`와 `~/.bashrc`에 마커 블록으로 등록 (있는 rc 파일 + 현재 셸 기준)
+5. 업데이트에 쓸 설치 출처를 `install-info`에 기록
 
 이름을 묻는 건 사람이 터미널에서 실행할 때뿐입니다. 파이프나 CI처럼 입력이 없는
 환경에서는 묻지 않고 기존 설정을 그대로 씁니다. `--default-name`이나
@@ -65,12 +82,13 @@ cd claude-profiles
 | `--no-migrate` | 예전 `profiles.zsh` 등록을 정리하지 않음 |
 | `--skip-probe` | claude 동작 확인 건너뜀 |
 | `--dry-run` | 무엇을 할지 보여주기만 함 |
+| `--source SPEC` | 업데이트에 쓸 출처를 직접 지정 (`url:` / `git:` / `dir:`) |
 
 설치 후 새 셸을 열거나 `source ~/.zshrc`를 실행하세요.
 
 ### 다른 서버에 설치하기
 
-서버마다 `git clone` → `./install.sh` → 계정 로그인입니다.
+서버마다 위 한 줄 설치(또는 `git clone` → `./install.sh`) 후 계정 로그인입니다.
 
 ```sh
 claude-use work        # 프로필 생성 및 전환
@@ -81,6 +99,23 @@ claude-who             # 확인
 자격 증명 파일을 서버 사이에 복사하는 방식은 권하지 않습니다. 토큰이 그대로
 복제되고 갱신 시점에 서로 어긋날 수 있습니다. 서버마다 새로 로그인하세요.
 
+## 업데이트
+
+```sh
+claude-profiles-update
+```
+
+설치할 때 기록해 둔 출처에서 다시 받아 재설치합니다. curl로 설치했으면 같은
+URL을 다시 받고, `git clone`으로 설치했으면 `git pull --ff-only` 후 재설치합니다.
+설치가 멱등이라 몇 번 돌려도 안전하고, 프로필 데이터와 로그인 상태는 그대로입니다.
+끝나면 새 셸을 열어야 새 함수가 적용됩니다.
+
+현재 버전과 설치 출처는 이렇게 봅니다.
+
+```sh
+claude-profiles -v
+```
+
 ## 사용법
 
 | 명령 | 하는 일 |
@@ -90,6 +125,8 @@ claude-who             # 확인
 | `claude-who` | 현재 프로필과 로그인 계정 표시 |
 | `claude-profiles` | 프로필 목록과 각 계정 표시 (`-q`는 계정 조회 생략) |
 | `claude-with <이름> [인자...]` | 셸 프로필은 그대로 두고 한 번만 그 계정으로 실행 |
+| `claude-profiles-update` | 설치 출처에서 다시 받아 갱신 |
+| `claude-profiles -v` | 버전과 설치 출처 표시 |
 
 프로필 이름은 영문/숫자/`.`/`_`/`-`만 쓸 수 있습니다. 기본 프로필의 이름은
 `default`이고, `--default-name`으로 계정 이름을 붙일 수 있습니다(아래 참고). `claude-use`와
@@ -114,7 +151,8 @@ claude-who
 ./install.sh --default-name work-main
 ```
 
-터미널에서 그냥 `./install.sh`를 실행하면 이 이름을 물어봅니다. 그러면 `default` 대신 그 이름으로 보이고, 그 이름으로 전환할 수 있습니다.
+터미널에서 그냥 `./install.sh`를 실행하면 이 이름을 물어봅니다.
+그러면 `default` 대신 그 이름으로 보이고, 그 이름으로 전환할 수 있습니다.
 `default`라는 이름도 계속 통합니다.
 
 ```
@@ -207,6 +245,14 @@ rm ~/.claude-profiles/personal/projects   # 대화 기록과 기억을 분리
 
 ## 제거
 
+저장소가 없어도 됩니다. 설치할 때 제거 스크립트도 같이 넣어 둡니다.
+
+```sh
+~/.local/share/claude-profiles/uninstall.sh
+```
+
+저장소가 있으면 그쪽에서 실행해도 같습니다.
+
 ```sh
 ./uninstall.sh
 ```
@@ -226,7 +272,18 @@ rc 등록 블록과 설치한 스크립트만 지웁니다. **프로필 디렉�
 현재 셸에 남은 함수까지 즉시 없애려면:
 
 ```sh
-unset -f claude-use claude-who claude-profiles claude-with; unset CLAUDE_CONFIG_DIR
+unset -f claude-use claude-who claude-profiles claude-with claude-profiles-update
+unset CLAUDE_CONFIG_DIR
+```
+
+## 개발
+
+라이브러리나 설치 스크립트를 고쳤으면 번들을 다시 만들어 함께 커밋합니다.
+생성 결과는 결정적이라(날짜·커밋 해시를 넣지 않습니다) 테스트가 최신 여부를 검사합니다.
+
+```sh
+./bundle.sh          # dist/install-standalone.sh 재생성
+./tests/run-tests.sh
 ```
 
 ## 검증
@@ -238,7 +295,9 @@ unset -f claude-use claude-who claude-profiles claude-with; unset CLAUDE_CONFIG_
 문법 검사(`bash -n`/`sh -n`/`zsh -n`), JSON 파서(따옴표·역슬래시·한글·`null`·
 구두점 포함 값), 프로필 이름 검증(경로 탈출 차단), `CLAUDE_CONFIG_DIR` 격리,
 설치 → 재설치(멱등) → 제거 → 재설치 순환, 깨끗한 셸(`bash --noprofile --norc`,
-`zsh -f`)에서의 실제 전환까지 확인합니다.
+`zsh -f`)에서의 실제 전환, 자립형 번들(sh·bash·zsh 각각으로 설치해 품고 있던
+파일이 바이트 그대로 나오는지), `claude-profiles-update`, 그리고 `curl | sh`
+모양에서 `/dev/tty`로 질문이 뜨는지까지 확인합니다.
 
 테스트는 가짜 `HOME` 안에서만 돌고 실제 홈의 rc 파일이 바뀌지 않았는지
 스스로 검사합니다. `claude auth logout`은 어떤 경로로도 실행하지 않습니다.

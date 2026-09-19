@@ -10,13 +10,15 @@ BEGIN_MARK='# >>> claude-profiles >>>'
 END_MARK='# <<< claude-profiles <<<'
 LIB_NAME='claude-profiles.sh'
 
-SRC_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+# 번들(자립형 단일 파일)은 압축을 푼 임시 디렉터리를 여기로 넘깁니다.
+SRC_DIR="${CLAUDE_PROFILES_SRC:-$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)}"
 PREFIX="${CLAUDE_PROFILES_PREFIX:-$HOME/.local/share/claude-profiles}"
 SHELL_OPT=auto
 DEFAULT_NAME=default
 DEFAULT_NAME_SET=0
 DO_MIGRATE=1
 NO_PROMPT=0
+SOURCE_SPEC="${CLAUDE_PROFILES_SOURCE_SPEC:-}"
 DRY_RUN=0
 SKIP_PROBE=0
 
@@ -30,6 +32,8 @@ usage() {
                    지정하지 않으면 이미 등록된 값을 그대로 둡니다.
                    default 로 주면 별칭을 없앱니다.
   --no-prompt      이름을 묻지 않음 (비대화형 설치와 같은 동작)
+  --source SPEC    업데이트에 쓸 설치 출처 (url:... | git:... | dir:...)
+                   보통은 자동으로 정해지므로 줄 필요가 없습니다.
   --no-migrate     기존 ~/.claude-profiles/profiles.zsh 등록을 정리하지 않음
   --skip-probe     claude 동작 확인(임시 설정 디렉터리 테스트)을 건너뜀
   --dry-run        무엇을 할지 보여주기만 하고 아무것도 바꾸지 않음
@@ -48,6 +52,8 @@ while [ $# -gt 0 ]; do
     --default-name)   DEFAULT_NAME="${2:?--default-name 에 이름이 필요합니다}"; DEFAULT_NAME_SET=1; shift 2 ;;
     --default-name=*) DEFAULT_NAME="${1#--default-name=}"; DEFAULT_NAME_SET=1; shift ;;
     --no-prompt)  NO_PROMPT=1; shift ;;
+    --source)     SOURCE_SPEC="${2:?--source 에 값이 필요합니다}"; shift 2 ;;
+    --source=*)   SOURCE_SPEC="${1#--source=}"; shift ;;
     --no-migrate) DO_MIGRATE=0; shift ;;
     --skip-probe) SKIP_PROBE=1; shift ;;
     --dry-run)    DRY_RUN=1; shift ;;
@@ -125,7 +131,33 @@ if [ "$DRY_RUN" -eq 0 ]; then
   cp "$SRC_DIR/$LIB_NAME" "$PREFIX/$LIB_NAME.new"
   mv "$PREFIX/$LIB_NAME.new" "$PREFIX/$LIB_NAME"
   chmod 644 "$PREFIX/$LIB_NAME"
+  # 저장소 없이도 제거할 수 있도록 uninstall.sh 를 같이 둡니다.
+  if [ -f "$SRC_DIR/uninstall.sh" ]; then
+    cp "$SRC_DIR/uninstall.sh" "$PREFIX/uninstall.sh.new"
+    mv "$PREFIX/uninstall.sh.new" "$PREFIX/uninstall.sh"
+    chmod 755 "$PREFIX/uninstall.sh"
+    say "  제거 스크립트도 함께 설치: $PREFIX/uninstall.sh"
+  fi
   say "  설치 완료"
+fi
+
+# 업데이트에 쓸 설치 출처를 정합니다.
+if [ -z "$SOURCE_SPEC" ]; then
+  if git -C "$SRC_DIR" rev-parse --git-dir >/dev/null 2>&1; then
+    SOURCE_SPEC="git:$SRC_DIR"
+  else
+    SOURCE_SPEC="dir:$SRC_DIR"
+  fi
+fi
+if [ "$DRY_RUN" -eq 0 ]; then
+  version=$(sed -n 's/^CLAUDE_PROFILES_VERSION="\(.*\)"$/\1/p' "$PREFIX/$LIB_NAME" | head -1)
+  {
+    printf 'version=%s\n' "${version:-?}"
+    printf 'prefix=%s\n' "$PREFIX"
+    printf 'source=%s\n' "$SOURCE_SPEC"
+    printf 'installed=%s\n' "$(date '+%Y-%m-%d %H:%M:%S')"
+  } > "$PREFIX/install-info"
+  say "  설치 출처: $SOURCE_SPEC  (claude-profiles-update 로 갱신)"
 fi
 
 LIB_PATH="$PREFIX/$LIB_NAME"
@@ -136,6 +168,8 @@ rc_block() {
   printf '%s\n' "$BEGIN_MARK"
   printf '%s\n' "# Claude Code 계정 프로필 전환: claude-use / claude-who / claude-profiles / claude-with"
   printf '%s\n' "# 이 블록은 claude-profiles 패키지가 관리합니다. 제거는 uninstall.sh."
+  printf '%s\n' "CLAUDE_PROFILES_HOME=\"$PREFIX\""
+  printf '%s\n' "export CLAUDE_PROFILES_HOME"
   if [ -n "${1:-}" ] && [ "$1" != default ]; then
     printf '%s\n' "CLAUDE_PROFILE_DEFAULT_NAME=$1"
     printf '%s\n' "export CLAUDE_PROFILE_DEFAULT_NAME"
@@ -209,8 +243,21 @@ prompt_default_name() {
   [ "$NO_PROMPT" -eq 1 ] && return 0
   [ "$DRY_RUN" -eq 1 ] && return 0
   [ "$SHELL_OPT" = none ] && return 0
-  # 테스트에서 가짜 tty 를 쓰기 위한 통로입니다.
-  if [ "${CLAUDE_PROFILES_ASSUME_TTY:-0}" != 1 ] && [ ! -t 0 ]; then
+  # 입력을 어디서 받을지 정합니다.
+  #   - 표준 입력이 터미널이면 그대로
+  #   - curl ... | sh 처럼 표준 입력이 파이프면 /dev/tty 에서
+  #   - 터미널이 아예 없으면(CI) 묻지 않음
+  #   CLAUDE_PROFILES_NO_TTY=1 은 터미널이 없는 상황을 흉내 내는 테스트용입니다.
+  use_tty=0
+  if [ "${CLAUDE_PROFILES_ASSUME_TTY:-0}" = 1 ]; then
+    use_tty=0
+  elif [ -t 0 ]; then
+    use_tty=0
+  elif [ "${CLAUDE_PROFILES_NO_TTY:-0}" = 1 ]; then
+    return 0
+  elif (exec 3</dev/tty) 2>/dev/null; then
+    use_tty=1
+  else
     return 0
   fi
 
@@ -233,6 +280,15 @@ prompt_default_name() {
     say "  그냥 Enter 를 누르면 지금 설정된 '$cur' 을 유지합니다."
   fi
 
+  if [ "$use_tty" -eq 1 ]; then
+    prompt_default_name_loop "$cur" < /dev/tty
+  else
+    prompt_default_name_loop "$cur"
+  fi
+}
+
+prompt_default_name_loop() {
+  cur="$1"
   tries=0
   while [ "$tries" -lt 3 ]; do
     tries=$((tries + 1))
@@ -405,6 +461,9 @@ cat <<DONE
   claude-use <이름>       # 프로필 생성 및 이 셸에서 전환
   claude auth login       # 이 셸에서 두 번째 계정으로 로그인
   claude-who              # 계정 확인
+
+업데이트:      claude-profiles-update
+제거:          $PREFIX/uninstall.sh
 
 프로필 데이터: ${CLAUDE_PROFILE_ROOT:-$HOME/.claude-profiles}
 스크립트:      $LIB_PATH

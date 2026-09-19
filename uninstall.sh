@@ -102,14 +102,33 @@ done
 # ---------------------------------------------------------------- 2. 스크립트 제거
 
 step "2. 스크립트 제거"
+SELF_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+PREFIX_ABS=$(CDPATH= cd -- "$PREFIX" 2>/dev/null && pwd || printf '%s' "$PREFIX")
+
 if [ -f "$PREFIX/$LIB_NAME" ]; then
   say "  삭제: $PREFIX/$LIB_NAME"
-  if [ "$DRY_RUN" -eq 0 ]; then
-    rm -f "$PREFIX/$LIB_NAME"
-    rmdir "$PREFIX" 2>/dev/null && say "  빈 디렉터리 삭제: $PREFIX" || true
-  fi
+  [ "$DRY_RUN" -eq 0 ] && rm -f "$PREFIX/$LIB_NAME"
 else
   say "  $PREFIX/$LIB_NAME 없음 (이미 지워졌거나 다른 위치)"
+fi
+if [ -f "$PREFIX/install-info" ]; then
+  say "  삭제: $PREFIX/install-info"
+  [ "$DRY_RUN" -eq 0 ] && rm -f "$PREFIX/install-info"
+fi
+
+if [ "$SELF_DIR" = "$PREFIX_ABS" ]; then
+  # 지금 실행 중인 파일이 그 디렉터리에 있습니다.
+  # 실행 도중 자신을 지우는 것은 셸에 따라 위험해서 남겨 둡니다.
+  say "  이 제거 스크립트는 남겨 둡니다: $PREFIX/uninstall.sh"
+  say "  마저 지우려면: rm -rf \"$PREFIX\""
+elif [ -f "$PREFIX/uninstall.sh" ]; then
+  say "  삭제: $PREFIX/uninstall.sh"
+  if [ "$DRY_RUN" -eq 0 ]; then
+    rm -f "$PREFIX/uninstall.sh"
+    rmdir "$PREFIX" 2>/dev/null && say "  빈 디렉터리 삭제: $PREFIX" || true
+  fi
+elif [ "$DRY_RUN" -eq 0 ]; then
+  rmdir "$PREFIX" 2>/dev/null && say "  빈 디렉터리 삭제: $PREFIX" || true
 fi
 
 # ---------------------------------------------------------------- 3. 프로필 데이터
@@ -166,5 +185,5 @@ fi
 step "4. 완료"
 say "현재 셸에 남아 있는 함수는 새 셸을 열면 사라집니다."
 say "이 셸에서 바로 지우려면:"
-say "  unset -f claude-use claude-who claude-profiles claude-with 2>/dev/null"
+say "  unset -f claude-use claude-who claude-profiles claude-with claude-profiles-update 2>/dev/null"
 say "  unset CLAUDE_CONFIG_DIR"
