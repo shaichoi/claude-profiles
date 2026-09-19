@@ -92,8 +92,14 @@ fi
 
 step "2. 스크립트 문법 확인"
 [ -f "$SRC_DIR/$LIB_NAME" ] || { warn "$SRC_DIR/$LIB_NAME 이 없습니다."; exit 1; }
-command -v bash >/dev/null 2>&1 && bash -n "$SRC_DIR/$LIB_NAME" && say "  bash -n 통과"
-command -v zsh  >/dev/null 2>&1 && zsh  -n "$SRC_DIR/$LIB_NAME" && say "  zsh -n 통과"
+if command -v bash >/dev/null 2>&1; then
+  bash -n "$SRC_DIR/$LIB_NAME" || { warn "bash 문법 검사 실패. 설치를 중단합니다."; exit 1; }
+  say "  bash -n 통과"
+fi
+if command -v zsh >/dev/null 2>&1; then
+  zsh -n "$SRC_DIR/$LIB_NAME" || { warn "zsh 문법 검사 실패. 설치를 중단합니다."; exit 1; }
+  say "  zsh -n 통과"
+fi
 
 # ---------------------------------------------------------------- 3. 파일 설치
 
@@ -222,9 +228,11 @@ case "$SHELL_OPT" in
   auto)
     [ -f "$HOME/.zshrc" ]  && want_zsh=1
     [ -f "$HOME/.bashrc" ] && want_bash=1
-    case "${SHELL##*/}" in
-      zsh)  want_zsh=1 ;;
-      bash) want_bash=1 ;;
+    case "${SHELL:-}" in
+      */zsh)  want_zsh=1 ;;
+      */bash) want_bash=1 ;;
+      zsh)    want_zsh=1 ;;
+      bash)   want_bash=1 ;;
     esac
     if [ "$want_zsh" -eq 0 ] && [ "$want_bash" -eq 0 ]; then
       command -v zsh  >/dev/null 2>&1 && want_zsh=1
@@ -243,7 +251,14 @@ fi
 
 # 예전 스크립트 파일은 지우지 않고 이름만 바꿔 둡니다.
 LEGACY="${CLAUDE_PROFILE_ROOT:-$HOME/.claude-profiles}/profiles.zsh"
-if [ "$DO_MIGRATE" -eq 1 ] && [ -f "$LEGACY" ]; then
+legacy_still_used=0
+for rc in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile"; do
+  [ -f "$rc" ] || continue
+  grep -q '\.claude-profiles/profiles\.zsh' "$rc" 2>/dev/null && legacy_still_used=1
+done
+if [ "$legacy_still_used" -eq 1 ] && [ -f "$LEGACY" ]; then
+  warn "  주의: 아직 profiles.zsh 를 읽는 rc 파일이 있어 이름을 바꾸지 않습니다."
+elif [ "$DO_MIGRATE" -eq 1 ] && [ -f "$LEGACY" ]; then
   legacy_bak="$LEGACY.bak"
   [ -e "$legacy_bak" ] && legacy_bak="$LEGACY.bak.$(date +%Y%m%d%H%M%S)"
   say "  예전 스크립트 보관: $LEGACY -> $legacy_bak"

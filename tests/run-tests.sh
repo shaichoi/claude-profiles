@@ -196,6 +196,21 @@ if grep -q '기존 zshrc 내용' "$FAKE/.zshrc"; then ok "제거 후에도 기�
 out4=$(run_install 2>&1) || ng "재설치 실패: $out4"
 check "재설치 후 마커 1개" 1 "$(markers "$FAKE/.zshrc")"
 
+# SHELL 이 없는 환경(컨테이너, cron)에서도 set -u 로 죽지 않아야 합니다
+out4b=$( (cd "$SRC_DIR" && env -u CLAUDE_PROFILE_ROOT -u SHELL HOME="$FAKE" sh ./install.sh --prefix "$PFX" --dry-run) 2>&1 )
+if [ $? -eq 0 ]; then ok "SHELL 미설정 환경에서도 동작"; else ng "SHELL 미설정 환경에서 실패: $out4b"; fi
+
+# 라이브러리 문법이 깨지면 설치가 중단되어야 합니다
+BROKEN="$TMPROOT/broken"
+mkdir -p "$BROKEN/tests"
+cp "$SRC_DIR/install.sh" "$BROKEN/install.sh"
+printf 'claude-use() { if\n' > "$BROKEN/claude-profiles.sh"
+if (cd "$BROKEN" && env -u CLAUDE_PROFILE_ROOT HOME="$FAKE" sh ./install.sh --prefix "$TMPROOT/nope" >/dev/null 2>&1); then
+  ng "문법이 깨진 스크립트를 그대로 설치함"
+else
+  ok "문법 검사 실패 시 설치 중단"
+fi
+
 # --purge-profiles 는 확인 없이는 지우지 않아야 합니다
 mkdir -p "$FAKE/.claude-profiles/testacct"
 out5=$(run_uninstall --purge-profiles --dry-run 2>&1) || true
