@@ -185,5 +185,5 @@ fi
 step "4. 완료"
 say "현재 셸에 남아 있는 함수는 새 셸을 열면 사라집니다."
 say "이 셸에서 바로 지우려면:"
-say "  unset -f claude-use claude-who claude-profiles claude-with claude-profiles-update 2>/dev/null"
+say "  unset -f claude-new claude-use claude-who claude-profiles claude-with claude-profiles-update 2>/dev/null"
 say "  unset CLAUDE_CONFIG_DIR"

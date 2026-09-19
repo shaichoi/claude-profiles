@@ -14,7 +14,7 @@
 #   계정과 무관한 항목(설정, 대화 기록, 기억, 플러그인 등)은 ~/.claude 로
 #   심볼릭 링크하므로 계정을 바꿔도 --continue 와 기억이 유지됩니다.
 
-CLAUDE_PROFILES_VERSION="1.1.0"
+CLAUDE_PROFILES_VERSION="1.2.0"
 
 CLAUDE_PROFILE_ROOT="${CLAUDE_PROFILE_ROOT:-$HOME/.claude-profiles}"
 export CLAUDE_PROFILE_ROOT
@@ -275,6 +275,57 @@ claude-profiles() {
       printf '%s\n' "$mark$name  —  $(_claude_profile_account "$dir")"
     fi
   done
+  return 0
+}
+
+# 현재 셸은 그대로 두고 프로필만 만듭니다.
+#   claude-new work2            만들기만
+#   claude-new work2 --login    만들고 바로 그 계정으로 로그인 (셸은 그대로)
+claude-new() {
+  local name="$1" dir item existed=0 do_login=0
+  if [ -z "$name" ]; then
+    printf '%s\n' "사용법: claude-new <프로필 이름> [--login]" >&2
+    printf '%s\n' "  현재 셸의 프로필은 바뀌지 않습니다." >&2
+    return 1
+  fi
+  case "${2:-}" in
+    '')      ;;
+    --login) do_login=1 ;;
+    *) printf '%s\n' "알 수 없는 옵션: $2   (쓸 수 있는 것: --login)" >&2; return 1 ;;
+  esac
+  if ! _claude_profile_valid_name "$name"; then
+    printf '%s\n' "프로필 이름은 영문/숫자/. _ - 만 쓸 수 있습니다: $name" >&2
+    return 1
+  fi
+  dir="$(_claude_profile_dir "$name")"
+  if [ "$dir" = "$HOME/.claude" ]; then
+    printf '%s\n' "'$name' 은 기본 프로필이라 이미 있습니다. 새로 만들 수 없습니다." >&2
+    return 1
+  fi
+  [ -d "$dir" ] && existed=1
+  _claude_profile_init "$dir" || return 1
+
+  if [ "$existed" -eq 1 ]; then
+    printf '%s\n' "이미 있는 프로필: $name  ($dir)"
+    printf '%s\n' "  빠진 공유 링크가 있으면 채웠습니다."
+  else
+    printf '%s\n' "프로필 생성: $name  ($dir)"
+  fi
+  printf '%s\n' "$CLAUDE_PROFILE_SHARED" | tr ' ' '\n' | while IFS= read -r item; do
+    [ -n "$item" ] || continue
+    [ -L "$dir/$item" ] && printf '%s\n' "  공유 링크: $item"
+  done
+  printf '%s\n' "  계정: $(_claude_profile_account "$dir")"
+  printf '%s\n' "현재 셸은 그대로입니다: $(_claude_profile_name)"
+
+  if [ "$do_login" -eq 1 ]; then
+    printf '%s\n' "이제 $name 계정으로 로그인합니다. 이 셸의 프로필은 바뀌지 않습니다."
+    claude-with "$name" auth login || return 1
+    printf '%s\n' "로그인 결과: $(_claude_profile_account "$dir")"
+  else
+    printf '%s\n' "로그인하려면: claude-with $name auth login   (셸은 그대로)"
+    printf '%s\n' "이 셸을 전환하려면: claude-use $name"
+  fi
   return 0
 }
 

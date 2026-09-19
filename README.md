@@ -120,6 +120,7 @@ claude-profiles -v
 
 | 명령 | 하는 일 |
 | --- | --- |
+| `claude-new <이름> [--login]` | **셸은 그대로 두고** 프로필만 만듦 (`--login`이면 로그인까지) |
 | `claude-use <이름>` | 현재 셸의 프로필 전환 (없으면 새로 만듦) |
 | `claude-use default` | 기본 계정(`~/.claude`)으로 복귀 |
 | `claude-who` | 현재 프로필과 로그인 계정 표시 |
@@ -134,11 +135,36 @@ claude-profiles -v
 
 ### 두 번째 계정 등록
 
+지금 쓰는 터미널의 계정을 바꾸고 싶지 않다면 `claude-new`를 쓰세요.
+프로필 디렉터리와 공유 링크만 만들고 현재 셸은 건드리지 않습니다.
+
 ```sh
-claude-use personal
+claude-new work-sub
+```
+
+만든 김에 로그인까지 하려면 `--login`을 붙입니다. 로그인은 그 프로필로
+실행되지만, **현재 셸의 프로필은 그대로**입니다.
+
+```sh
+claude-new work-sub --login
+```
+
+`claude-with`로도 같은 일이 됩니다. 프로필이 없으면 만들고, 한 번만 그 계정으로
+실행한 뒤 셸은 원래대로 둡니다.
+
+```sh
+claude-with work-sub auth login
+```
+
+이 터미널을 아예 그 계정으로 바꿔서 쓸 거라면 `claude-use`가 편합니다.
+
+```sh
+claude-use work-sub
 claude auth login
 claude-who
 ```
+
+`claude-new`는 여러 번 실행해도 안전합니다. 이미 있으면 빠진 공유 링크만 채웁니다.
 
 ### 기본 프로필에 계정 이름 붙이기
 
@@ -272,7 +298,7 @@ rc 등록 블록과 설치한 스크립트만 지웁니다. **프로필 디렉�
 현재 셸에 남은 함수까지 즉시 없애려면:
 
 ```sh
-unset -f claude-use claude-who claude-profiles claude-with claude-profiles-update
+unset -f claude-new claude-use claude-who claude-profiles claude-with claude-profiles-update
 unset CLAUDE_CONFIG_DIR
 ```
 

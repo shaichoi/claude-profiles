@@ -262,9 +262,50 @@ for sh_name in bash zsh; do
   check "$sh_name 프로필 전환/링크/차단" "$FUNC_EXPECTED" "$actual"
 done
 
+head_ "7. claude-new (셸을 바꾸지 않고 프로필만 만들기)"
+NEW_PROBE="$TMPROOT/new.sh"
+cat > "$NEW_PROBE" <<'PROBE'
+. "$LIB"
+before="${CLAUDE_CONFIG_DIR-unset}"
+claude-new made >/dev/null
+printf 'CONFIG_DIR_UNCHANGED=%s\n' "$([ "${CLAUDE_CONFIG_DIR-unset}" = "$before" ] && echo 예 || echo 아니오)"
+printf 'NAME=%s\n' "$(_claude_profile_name)"
+printf 'DIR=%s\n' "$([ -d "$HOME/.claude-profiles/made" ] && echo 있음 || echo 없음)"
+for item in settings.json projects CLAUDE.md; do
+  [ -L "$HOME/.claude-profiles/made/$item" ] && printf 'LINK:%s\n' "$item"
+done
+claude-new made >/dev/null 2>&1 && printf 'TWICE=성공\n' || printf 'TWICE=실패\n'
+claude-new ../evil >/dev/null 2>&1 && printf 'ESCAPE=허용됨\n' || printf 'ESCAPE=차단됨\n'
+claude-new default >/dev/null 2>&1 && printf 'DEFAULT=허용됨\n' || printf 'DEFAULT=차단됨\n'
+claude-new >/dev/null 2>&1 && printf 'NOARG=허용됨\n' || printf 'NOARG=거부됨\n'
+claude-new made --bogus >/dev/null 2>&1 && printf 'BADOPT=허용됨\n' || printf 'BADOPT=거부됨\n'
+printf 'LIST=%s\n' "$(claude-profiles -q | tr -d ' \n')"
+PROBE
+NEW_EXPECTED='CONFIG_DIR_UNCHANGED=예
+NAME=default
+DIR=있음
+LINK:settings.json
+LINK:projects
+LINK:CLAUDE.md
+TWICE=성공
+ESCAPE=차단됨
+DEFAULT=차단됨
+NOARG=거부됨
+BADOPT=거부됨
+LIST=*defaultmade'
+for sh_name in bash zsh; do
+  command -v "$sh_name" >/dev/null 2>&1 || continue
+  rm -rf "$FAKE/.claude-profiles"
+  case "$sh_name" in
+    bash) actual=$(env -u CLAUDE_PROFILE_ROOT -u CLAUDE_CONFIG_DIR HOME="$FAKE" LIB="$SRC_DIR/claude-profiles.sh" bash --noprofile --norc "$NEW_PROBE" 2>&1) ;;
+    zsh)  actual=$(env -u CLAUDE_PROFILE_ROOT -u CLAUDE_CONFIG_DIR HOME="$FAKE" LIB="$SRC_DIR/claude-profiles.sh" zsh -f "$NEW_PROBE" 2>&1) ;;
+  esac
+  check "$sh_name claude-new 동작" "$NEW_EXPECTED" "$actual"
+done
+
 # ---------------------------------------------------------------- 기본 프로필 별칭
 
-head_ "7. 기본 프로필 별칭 (CLAUDE_PROFILE_DEFAULT_NAME)"
+head_ "8. 기본 프로필 별칭 (CLAUDE_PROFILE_DEFAULT_NAME)"
 ALIAS_PROBE="$TMPROOT/alias.sh"
 cat > "$ALIAS_PROBE" <<'PROBE'
 . "$LIB"
@@ -316,7 +357,7 @@ case "$collide_err" in *"쓸 수 없어"*) ok "충돌을 셸 시작 때 한 번 
 bad=$(env -u CLAUDE_PROFILE_ROOT -u CLAUDE_CONFIG_DIR HOME="$FAKE" LIB="$SRC_DIR/claude-profiles.sh" CLAUDE_PROFILE_DEFAULT_NAME='../evil' bash --noprofile --norc -c '. "$LIB"; _claude_profile_name' 2>/dev/null)
 check "잘못된 별칭은 default 로" default "$bad"
 
-head_ "8. install.sh --default-name"
+head_ "9. install.sh --default-name"
 rm -rf "$FAKE/.claude-profiles"
 dn_line() { sed -n 's/^CLAUDE_PROFILE_DEFAULT_NAME=//p' "$FAKE/.zshrc"; }
 run_install --default-name alpha >/dev/null 2>&1
@@ -335,7 +376,7 @@ else
   ok "잘못된 --default-name 거부"
 fi
 
-head_ "9. 설치 중 이름 묻기"
+head_ "10. 설치 중 이름 묻기"
 # 가짜 tty 통로로 대화형 경로를 시험합니다 (실제 tty 는 script(1) 로 따로 확인).
 ask() { # ask <입력> [추가 옵션...]
   input="$1"; shift
@@ -372,7 +413,7 @@ out=$( (cd "$SRC_DIR" && env -u CLAUDE_PROFILE_ROOT HOME="$FAKE" CLAUDE_PROFILES
 check "비대화형에서는 묻지 않고 유지" explicit "$(dn_line)"
 case "$out" in *"이름:"*) ng "비대화형인데 물어봄" ;; *) ok "비대화형에서는 묻지 않음" ;; esac
 
-head_ "10. 자립형 번들과 업데이트"
+head_ "11. 자립형 번들과 업데이트"
 
 # 번들 생성이 결정적인지, 그리고 dist 가 최신인지
 BSRC="$TMPROOT/bundlesrc"
@@ -480,7 +521,7 @@ fi
 
 # ---------------------------------------------------------------- 실제 홈 무결성
 
-head_ "11. 실제 홈 디렉터리 무결성"
+head_ "12. 실제 홈 디렉터리 무결성"
 REAL_AFTER=$(snapshot_real_home)
 check "실제 rc 파일 변경 없음" "$REAL_BEFORE" "$REAL_AFTER"
 if [ -e "$REAL_HOME/.local/share/claude-profiles/claude-profiles.sh" ]; then
