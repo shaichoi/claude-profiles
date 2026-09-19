@@ -171,7 +171,8 @@ rc_register() {
     had_legacy=1
   fi
 
-  tmp="$rc.claude-profiles.tmp.$$"
+  # 임시 파일은 홈이 아니라 TMPDIR 에 둡니다 (dry-run 이 홈에 아무것도 남기지 않도록).
+  tmp=$(mktemp "${TMPDIR:-/tmp}/claude-profiles-rc.XXXXXX")
   if [ "$had_legacy" -eq 1 ] && [ "$DO_MIGRATE" -eq 1 ]; then
     rc_strip_block "$rc" | rc_strip_legacy | rc_trim_trailing_blank > "$tmp"
   else

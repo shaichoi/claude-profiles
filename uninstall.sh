@@ -80,7 +80,7 @@ rc_unregister() {
     return 0
   fi
 
-  tmp="$rc.claude-profiles.tmp.$$"
+  tmp=$(mktemp "${TMPDIR:-/tmp}/claude-profiles-rc.XXXXXX")
   rc_strip_block "$rc" | rc_trim_trailing_blank > "$tmp"
   backup="$rc.claude-profiles.bak.$(date +%Y%m%d%H%M%S)"
   cp "$rc" "$backup"
