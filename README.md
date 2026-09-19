@@ -247,13 +247,16 @@ rm ~/.claude-profiles/personal/projects   # 대화 기록과 기억을 분리
 
 **`claude auth status`는 미로그인 상태에서 종료 코드 1을 반환합니다.**
 종료 코드로 성공/실패를 판단하면 안 되고, 출력 JSON의 `loggedIn`을 봐야 합니다.
+출력 필드는 버전에 따라 늘어납니다(2.1.278은 `configDirectory` 등이 추가됨).
+이 도구는 `loggedIn`, `email`, `orgName`, `subscriptionType`만 읽어서
+필드가 늘어도 영향을 받지 않습니다.
 
 **전환은 현재 셸에만 적용됩니다.** 이미 열려 있는 다른 터미널이나 실행 중인
 `claude` 세션에는 영향이 없습니다.
 
 **macOS는 미검증입니다.** 코드는 BSD 도구(`sed -E`, `mktemp` 템플릿, `sed -i`
-미사용)에 맞춰 작성했지만, 개발·검증은 Linux(WSL2, Arch, Claude Code 2.1.220,
-네이티브 설치)에서만 했습니다. macOS에서는 자격 증명이 파일이 아니라 Keychain에
+미사용)에 맞춰 작성했지만, 개발·검증은 Linux(WSL2, Arch, Claude Code 2.1.220과
+2.1.278, 네이티브 설치)에서만 했습니다. macOS에서는 자격 증명이 파일이 아니라 Keychain에
 저장될 수 있고, 그러면 `CLAUDE_CONFIG_DIR`을 나눠도 계정이 분리되지 않을 수
 있습니다. 처음 쓰는 macOS 머신에서는 `claude-use test` 후 `claude-who`로
 **두 프로필이 실제로 다른 계정을 가리키는지** 먼저 확인하세요.
