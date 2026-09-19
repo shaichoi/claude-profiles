@@ -1,0 +1,6 @@
+# 편집기/OS 부산물
+*.swp
+.DS_Store
+
+# 설치 스크립트가 만드는 백업
+*.claude-profiles.bak.*
