@@ -37,7 +37,7 @@ Claude Code는 `CLAUDE_CONFIG_DIR` 환경변수로 설정 디렉터리를 정합
 ## 설치
 
 ```sh
-git clone <저장소 주소> claude-profiles
+git clone git@github.com:shaichoi/claude-profiles.git
 cd claude-profiles
 ./install.sh
 ```
