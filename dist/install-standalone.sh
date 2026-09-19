@@ -31,7 +31,7 @@ cat > "$_cp_bundle_tmp/claude-profiles.sh" <<'__CLAUDE_PROFILES_LIB_EOF__'
 #   계정과 무관한 항목(설정, 대화 기록, 기억, 플러그인 등)은 ~/.claude 로
 #   심볼릭 링크하므로 계정을 바꿔도 --continue 와 기억이 유지됩니다.
 
-CLAUDE_PROFILES_VERSION="1.2.0"
+CLAUDE_PROFILES_VERSION="1.2.1"
 
 CLAUDE_PROFILE_ROOT="${CLAUDE_PROFILE_ROOT:-$HOME/.claude-profiles}"
 export CLAUDE_PROFILE_ROOT
@@ -376,7 +376,9 @@ fi
 
 # 설치 출처에서 다시 받아 재설치합니다. 설치는 멱등이라 여러 번 해도 안전합니다.
 claude-profiles-update() {
-  local info src url path
+  # zsh 에서 path 는 PATH 와 연결된 특수 변수입니다. local path 로 잡으면
+  # 이 함수 안에서 PATH 가 비어 sed 조차 찾지 못합니다. 이름을 피합니다.
+  local info src url src_path
   info="$CLAUDE_PROFILES_HOME/install-info"
   if [ ! -f "$info" ]; then
     printf '%s\n' "설치 정보를 찾을 수 없습니다: $info" >&2
@@ -399,25 +401,25 @@ claude-profiles-update() {
       fi
       ;;
     git:*)
-      path="${src#git:}"
-      if [ ! -d "$path" ]; then
-        printf '%s\n' "저장소를 찾을 수 없습니다: $path" >&2
+      src_path="${src#git:}"
+      if [ ! -d "$src_path" ]; then
+        printf '%s\n' "저장소를 찾을 수 없습니다: $src_path" >&2
         return 1
       fi
-      printf '%s\n' "저장소 갱신: $path"
-      git -C "$path" pull --ff-only || {
+      printf '%s\n' "저장소 갱신: $src_path"
+      git -C "$src_path" pull --ff-only || {
         printf '%s\n' "git pull 실패. 저장소에서 직접 정리한 뒤 다시 시도하세요." >&2
         return 1
       }
-      "$path/install.sh" --no-prompt --prefix "$CLAUDE_PROFILES_HOME" || return 1
+      "$src_path/install.sh" --no-prompt --prefix "$CLAUDE_PROFILES_HOME" || return 1
       ;;
     dir:*)
-      path="${src#dir:}"
-      if [ ! -x "$path/install.sh" ]; then
-        printf '%s\n' "설치 스크립트를 찾을 수 없습니다: $path/install.sh" >&2
+      src_path="${src#dir:}"
+      if [ ! -x "$src_path/install.sh" ]; then
+        printf '%s\n' "설치 스크립트를 찾을 수 없습니다: $src_path/install.sh" >&2
         return 1
       fi
-      "$path/install.sh" --no-prompt --prefix "$CLAUDE_PROFILES_HOME" || return 1
+      "$src_path/install.sh" --no-prompt --prefix "$CLAUDE_PROFILES_HOME" || return 1
       ;;
     *)
       printf '%s\n' "알 수 없는 설치 출처: $src" >&2

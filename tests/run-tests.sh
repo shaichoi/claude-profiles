@@ -52,6 +52,18 @@ fi
 
 # ---------------------------------------------------------------- JSON 파서
 
+head_ "1-2. zsh 특수 변수 회피"
+# zsh 는 path/status/argv 등을 셸 내부 상태와 연결해 둡니다.
+# 함수 안에서 local 로 잡으면 그 범위의 PATH 나 종료 코드가 망가집니다.
+zsh_specials='path status argv options fpath cdpath manpath module_path signals'
+bad_locals=""
+for v in $zsh_specials; do
+  if grep -nE "^[[:space:]]*local .*(^| )$v( |=|$)" "$SRC_DIR/claude-profiles.sh" >/dev/null 2>&1; then
+    bad_locals="$bad_locals $v"
+  fi
+done
+check "local 에 zsh 특수 변수 없음" "" "$bad_locals"
+
 head_ "2. JSON 파서 (python3/jq 없이)"
 PARSE_PROBE="$TMPROOT/parse.sh"
 cat > "$PARSE_PROBE" <<'PROBE'
@@ -464,12 +476,28 @@ env -u CLAUDE_PROFILE_ROOT -u CLAUDE_PROFILES_HOME HOME="$UH" CLAUDE_PROFILES_NO
   sh "$PKG/install.sh" --prefix "$UH/pfx" --shell zsh --no-prompt >/dev/null 2>&1
 check "로컬 디렉터리 설치는 출처를 dir 로 기록" "dir:$PKG" "$(sed -n 's/^source=//p' "$UH/pfx/install-info" 2>/dev/null)"
 
-printf '# 일부러 망가뜨림\n' > "$UH/pfx/claude-profiles.sh"
-uout=$(env -u CLAUDE_PROFILE_ROOT HOME="$UH" CLAUDE_PROFILES_HOME="$UH/pfx" CLAUDE_PROFILES_NO_TTY=1 \
-  LIB="$PKG/claude-profiles.sh" bash --noprofile --norc -c '. "$LIB"; claude-profiles-update' 2>&1)
-check "claude-profiles-update 가 라이브러리를 되돌림" \
-  "$(cksum < "$SRC_DIR/claude-profiles.sh")" "$(cksum < "$UH/pfx/claude-profiles.sh")"
-case "$uout" in *"업데이트 완료"*) ok "업데이트 완료 메시지" ;; *) ng "업데이트 실패: $uout" ;; esac
+# bash 와 zsh 양쪽에서 돌려야 합니다. zsh 특수 변수(path 등)를 건드리면
+# bash 에서만 통과하고 zsh 에서 PATH 가 날아가는 사고가 납니다.
+for sh_name in bash zsh; do
+  command -v "$sh_name" >/dev/null 2>&1 || continue
+  printf '# 일부러 망가뜨림\n' > "$UH/pfx/claude-profiles.sh"
+  case "$sh_name" in
+    bash) uout=$(env -u CLAUDE_PROFILE_ROOT HOME="$UH" CLAUDE_PROFILES_HOME="$UH/pfx" CLAUDE_PROFILES_NO_TTY=1 \
+            LIB="$PKG/claude-profiles.sh" bash --noprofile --norc -c '. "$LIB"; claude-profiles-update' 2>&1) ;;
+    zsh)  uout=$(env -u CLAUDE_PROFILE_ROOT HOME="$UH" CLAUDE_PROFILES_HOME="$UH/pfx" CLAUDE_PROFILES_NO_TTY=1 \
+            LIB="$PKG/claude-profiles.sh" zsh -f -c '. "$LIB"; claude-profiles-update' 2>&1) ;;
+  esac
+  check "$sh_name claude-profiles-update 가 라이브러리를 되돌림" \
+    "$(cksum < "$SRC_DIR/claude-profiles.sh")" "$(cksum < "$UH/pfx/claude-profiles.sh")"
+  case "$uout" in
+    *"업데이트 완료"*) ok "$sh_name 업데이트 완료 메시지" ;;
+    *) ng "$sh_name 업데이트 실패: $uout" ;;
+  esac
+  case "$uout" in
+    *"command not found"*|*"not found"*) ng "$sh_name 업데이트 중 명령을 찾지 못함 (PATH 문제)" ;;
+    *) ok "$sh_name 업데이트가 외부 명령을 정상적으로 찾음" ;;
+  esac
+done
 
 # 설치 정보가 없으면 안내하고 실패해야 합니다
 nout=$(env -u CLAUDE_PROFILE_ROOT HOME="$UH" CLAUDE_PROFILES_HOME="$TMPROOT/nowhere" \
