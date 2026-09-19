@@ -46,7 +46,12 @@ cd claude-profiles
 
 1. `claude` 존재 확인, 버전 출력, 임시 설정 디렉터리로 실제 동작 확인
 2. `claude-profiles.sh`를 `~/.local/share/claude-profiles/`에 복사
-3. `~/.zshrc`와 `~/.bashrc`에 마커 블록으로 등록 (있는 rc 파일 + 현재 셸 기준)
+3. 터미널에서 직접 실행하면 기본 프로필을 부를 이름을 물어봄 (Enter 는 기존값 유지)
+4. `~/.zshrc`와 `~/.bashrc`에 마커 블록으로 등록 (있는 rc 파일 + 현재 셸 기준)
+
+이름을 묻는 건 사람이 터미널에서 실행할 때뿐입니다. 파이프나 CI처럼 입력이 없는
+환경에서는 묻지 않고 기존 설정을 그대로 씁니다. `--default-name`이나
+`--no-prompt`를 주면 역시 묻지 않습니다.
 
 여러 번 실행해도 안전합니다. 이미 최신이면 아무것도 바꾸지 않고, 내용이
 바뀔 때만 `~/.zshrc.claude-profiles.bak.<시각>`으로 백업합니다.
@@ -56,6 +61,7 @@ cd claude-profiles
 | `--prefix DIR` | 스크립트 설치 위치 (기본 `~/.local/share/claude-profiles`) |
 | `--shell auto\|bash\|zsh\|both\|none` | rc 등록 대상 (기본 `auto`) |
 | `--default-name <이름>` | 기본 프로필(`~/.claude`)을 부를 이름 (아래 참고) |
+| `--no-prompt` | 이름을 묻지 않음 |
 | `--no-migrate` | 예전 `profiles.zsh` 등록을 정리하지 않음 |
 | `--skip-probe` | claude 동작 확인 건너뜀 |
 | `--dry-run` | 무엇을 할지 보여주기만 함 |
@@ -108,7 +114,7 @@ claude-who
 ./install.sh --default-name work-main
 ```
 
-그러면 `default` 대신 그 이름으로 보이고, 그 이름으로 전환할 수 있습니다.
+터미널에서 그냥 `./install.sh`를 실행하면 이 이름을 물어봅니다. 그러면 `default` 대신 그 이름으로 보이고, 그 이름으로 전환할 수 있습니다.
 `default`라는 이름도 계속 통합니다.
 
 ```

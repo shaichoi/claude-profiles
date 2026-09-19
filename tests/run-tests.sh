@@ -167,7 +167,7 @@ printf '# 기존 bashrc 내용\n' > "$FAKE/.bashrc"
 printf 'legacy\n' > "$FAKE/.claude-profiles/profiles.zsh"
 PFX="$FAKE/.local/share/claude-profiles"
 
-run_install() { (cd "$SRC_DIR" && env -u CLAUDE_PROFILE_ROOT HOME="$FAKE" sh ./install.sh --prefix "$PFX" --shell both "$@"); }
+run_install() { (cd "$SRC_DIR" && env -u CLAUDE_PROFILE_ROOT HOME="$FAKE" sh ./install.sh --prefix "$PFX" --shell both "$@" < /dev/null); }
 run_uninstall() { (cd "$SRC_DIR" && env -u CLAUDE_PROFILE_ROOT HOME="$FAKE" sh ./uninstall.sh --prefix "$PFX" "$@"); }
 markers() { awk -v m='# >>> claude-profiles >>>' '$0 == m { n++ } END { print n + 0 }' "$1" 2>/dev/null; }
 backups() { find "$FAKE" -maxdepth 1 -name '.*.claude-profiles.bak.*' 2>/dev/null | wc -l | tr -d ' '; }
@@ -335,9 +335,46 @@ else
   ok "잘못된 --default-name 거부"
 fi
 
+head_ "9. 설치 중 이름 묻기"
+# 가짜 tty 통로로 대화형 경로를 시험합니다 (실제 tty 는 script(1) 로 따로 확인).
+ask() { # ask <입력> [추가 옵션...]
+  input="$1"; shift
+  printf '%b' "$input" | (cd "$SRC_DIR" && env -u CLAUDE_PROFILE_ROOT HOME="$FAKE" \
+    CLAUDE_PROFILES_ASSUME_TTY=1 sh ./install.sh --prefix "$PFX" --shell both "$@" 2>&1)
+}
+rm -rf "$FAKE/.claude-profiles"
+run_install --default-name default >/dev/null 2>&1   # 초기화
+
+out=$(ask 'work-main\n')
+check "물어본 이름이 등록됨" work-main "$(dn_line)"
+case "$out" in *"이름:"*) ok "이름을 물어봄" ;; *) ng "묻지 않음" ;; esac
+
+out=$(ask '\n')
+check "Enter 만 누르면 기존 값 유지" work-main "$(dn_line)"
+
+out=$(ask 'a b\nwork-b\n')
+check "잘못된 이름은 다시 물어봄" work-b "$(dn_line)"
+case "$out" in *"영문/숫자"*) ok "잘못된 이름을 알려 줌" ;; *) ng "안내 없음" ;; esac
+
+mkdir -p "$FAKE/.claude-profiles/taken"
+out=$(ask 'taken\nwork-c\n')
+check "기존 프로필과 같은 이름은 거부" work-c "$(dn_line)"
+case "$out" in *"이미 있습니다"*) ok "충돌을 이유와 함께 알려 줌" ;; *) ng "충돌 안내 없음" ;; esac
+
+before="$(dn_line)"
+out=$(ask 'ignored\n' --no-prompt)
+check "--no-prompt 면 묻지 않음" "$before" "$(dn_line)"
+out=$(ask 'ignored\n' --default-name explicit)
+check "--default-name 이 있으면 묻지 않음" explicit "$(dn_line)"
+
+# 비대화형(파이프/CI)에서는 멈추지 않고 기존 값을 유지해야 합니다
+out=$( (cd "$SRC_DIR" && env -u CLAUDE_PROFILE_ROOT HOME="$FAKE" sh ./install.sh --prefix "$PFX" --shell both < /dev/null) 2>&1 )
+check "비대화형에서는 묻지 않고 유지" explicit "$(dn_line)"
+case "$out" in *"이름:"*) ng "비대화형인데 물어봄" ;; *) ok "비대화형에서는 묻지 않음" ;; esac
+
 # ---------------------------------------------------------------- 실제 홈 무결성
 
-head_ "9. 실제 홈 디렉터리 무결성"
+head_ "10. 실제 홈 디렉터리 무결성"
 REAL_AFTER=$(snapshot_real_home)
 check "실제 rc 파일 변경 없음" "$REAL_BEFORE" "$REAL_AFTER"
 if [ -e "$REAL_HOME/.local/share/claude-profiles/claude-profiles.sh" ]; then

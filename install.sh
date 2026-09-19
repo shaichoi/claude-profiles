@@ -16,6 +16,7 @@ SHELL_OPT=auto
 DEFAULT_NAME=default
 DEFAULT_NAME_SET=0
 DO_MIGRATE=1
+NO_PROMPT=0
 DRY_RUN=0
 SKIP_PROBE=0
 
@@ -28,6 +29,7 @@ usage() {
   --default-name N 기본 프로필(~/.claude)을 부를 이름 (예: work-main)
                    지정하지 않으면 이미 등록된 값을 그대로 둡니다.
                    default 로 주면 별칭을 없앱니다.
+  --no-prompt      이름을 묻지 않음 (비대화형 설치와 같은 동작)
   --no-migrate     기존 ~/.claude-profiles/profiles.zsh 등록을 정리하지 않음
   --skip-probe     claude 동작 확인(임시 설정 디렉터리 테스트)을 건너뜀
   --dry-run        무엇을 할지 보여주기만 하고 아무것도 바꾸지 않음
@@ -45,6 +47,7 @@ while [ $# -gt 0 ]; do
     --shell=*)    SHELL_OPT="${1#--shell=}"; shift ;;
     --default-name)   DEFAULT_NAME="${2:?--default-name 에 이름이 필요합니다}"; DEFAULT_NAME_SET=1; shift 2 ;;
     --default-name=*) DEFAULT_NAME="${1#--default-name=}"; DEFAULT_NAME_SET=1; shift ;;
+    --no-prompt)  NO_PROMPT=1; shift ;;
     --no-migrate) DO_MIGRATE=0; shift ;;
     --skip-probe) SKIP_PROBE=1; shift ;;
     --dry-run)    DRY_RUN=1; shift ;;
@@ -192,6 +195,79 @@ rc_trim_trailing_blank() {
   '
 }
 
+# 기본 프로필(~/.claude)에 로그인된 계정 이메일. 참고용으로만 씁니다.
+current_email() {
+  ( unset CLAUDE_CONFIG_DIR; claude auth status 2>/dev/null ) \
+    | tr '\n' ' ' \
+    | sed -n -E 's/.*"email"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/p'
+}
+
+# --default-name 없이 대화형으로 실행하면 이름을 물어봅니다.
+# 비대화형(스크립트, CI, 파이프)에서는 묻지 않고 기존 설정을 그대로 씁니다.
+prompt_default_name() {
+  [ "$DEFAULT_NAME_SET" -eq 1 ] && return 0
+  [ "$NO_PROMPT" -eq 1 ] && return 0
+  [ "$DRY_RUN" -eq 1 ] && return 0
+  [ "$SHELL_OPT" = none ] && return 0
+  # 테스트에서 가짜 tty 를 쓰기 위한 통로입니다.
+  if [ "${CLAUDE_PROFILES_ASSUME_TTY:-0}" != 1 ] && [ ! -t 0 ]; then
+    return 0
+  fi
+
+  cur=default
+  for rc in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile"; do
+    [ -f "$rc" ] || continue
+    v=$(rc_read_default_name "$rc")
+    if [ -n "$v" ]; then cur="$v"; break; fi
+  done
+
+  email=$(current_email)
+
+  printf '\n'
+  say "기본 프로필(~/.claude)을 부를 이름을 정하세요."
+  [ -n "$email" ] && say "  지금 이 디렉터리에 로그인된 계정: $email"
+  say "  계정 이름으로 부르면 프로필이 여러 개일 때 헷갈리지 않습니다. 예: work-main"
+  if [ "$cur" = default ]; then
+    say "  그냥 Enter 를 누르면 default 를 씁니다."
+  else
+    say "  그냥 Enter 를 누르면 지금 설정된 '$cur' 을 유지합니다."
+  fi
+
+  tries=0
+  while [ "$tries" -lt 3 ]; do
+    tries=$((tries + 1))
+    printf '이름: '
+    if ! IFS= read -r ans; then
+      printf '\n'
+      say "  입력을 받지 못해 '$cur' 로 진행합니다."
+      DEFAULT_NAME="$cur"; DEFAULT_NAME_SET=1
+      return 0
+    fi
+    if [ -z "$ans" ]; then
+      DEFAULT_NAME="$cur"; DEFAULT_NAME_SET=1
+      say "  '$cur' 로 진행합니다."
+      return 0
+    fi
+    case "$ans" in
+      . | .. | .* | *[!A-Za-z0-9._-]*)
+        warn "  영문/숫자/. _ - 만 쓸 수 있습니다: $ans"
+        continue ;;
+    esac
+    if [ "$ans" != default ] && [ -d "${CLAUDE_PROFILE_ROOT:-$HOME/.claude-profiles}/$ans" ]; then
+      warn "  같은 이름의 프로필 디렉터리가 이미 있습니다: $ans"
+      warn "  그 이름을 기본 프로필에 쓰면 해당 프로필 계정을 쓸 수 없게 됩니다."
+      continue
+    fi
+    DEFAULT_NAME="$ans"; DEFAULT_NAME_SET=1
+    say "  '$ans' 로 진행합니다."
+    return 0
+  done
+
+  say "  세 번 모두 쓸 수 없는 이름이라 '$cur' 로 진행합니다."
+  DEFAULT_NAME="$cur"; DEFAULT_NAME_SET=1
+  return 0
+}
+
 rc_register() {
   rc="$1"
   label="$2"
@@ -259,6 +335,7 @@ rc_register() {
 }
 
 step "4. 셸 rc 등록"
+prompt_default_name
 want_zsh=0
 want_bash=0
 case "$SHELL_OPT" in
