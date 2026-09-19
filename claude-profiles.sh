@@ -19,6 +19,12 @@ CLAUDE_PROFILES_VERSION="1.0.0"
 CLAUDE_PROFILE_ROOT="${CLAUDE_PROFILE_ROOT:-$HOME/.claude-profiles}"
 export CLAUDE_PROFILE_ROOT
 
+# 기본 프로필(~/.claude)에 붙일 이름. 계정 이름으로 부르고 싶을 때 씁니다.
+#   export CLAUDE_PROFILE_DEFAULT_NAME=work-main
+# 설정해도 default 라는 이름은 계속 통합니다.
+CLAUDE_PROFILE_DEFAULT_NAME="${CLAUDE_PROFILE_DEFAULT_NAME:-default}"
+export CLAUDE_PROFILE_DEFAULT_NAME
+
 # 프로필 사이에 공유할 항목 (공백으로 구분, 공백이 든 이름은 지원하지 않습니다)
 CLAUDE_PROFILE_SHARED="${CLAUDE_PROFILE_SHARED:-settings.json projects plugins hooks commands agents skills CLAUDE.md}"
 
@@ -71,12 +77,27 @@ _claude_profile_valid_name() {
   return 0
 }
 
+# 실제로 쓸 기본 프로필 이름.
+# 이름이 잘못됐거나 같은 이름의 프로필 디렉터리가 있으면 default 로 되돌립니다.
+# (별칭이 이기면 같은 이름의 프로필 계정에 접근할 수 없게 됩니다.)
+_claude_profile_default_name() {
+  local n="$CLAUDE_PROFILE_DEFAULT_NAME"
+  if [ "$n" = default ] || ! _claude_profile_valid_name "$n"; then
+    printf '%s\n' default
+  elif [ -d "$CLAUDE_PROFILE_ROOT/$n" ]; then
+    printf '%s\n' default
+  else
+    printf '%s\n' "$n"
+  fi
+}
+
 # 이름 -> 설정 디렉터리 경로
 _claude_profile_dir() {
-  case "$1" in
-    default | '') printf '%s\n' "$HOME/.claude" ;;
-    *)            printf '%s\n' "$CLAUDE_PROFILE_ROOT/$1" ;;
-  esac
+  if [ -z "$1" ] || [ "$1" = default ] || [ "$1" = "$(_claude_profile_default_name)" ]; then
+    printf '%s\n' "$HOME/.claude"
+  else
+    printf '%s\n' "$CLAUDE_PROFILE_ROOT/$1"
+  fi
 }
 
 # 현재 셸이 쓰는 프로필 이름
@@ -85,7 +106,7 @@ _claude_profile_name() {
   dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
   dir="${dir%/}"
   if [ "$dir" = "$HOME/.claude" ]; then
-    printf '%s\n' default
+    _claude_profile_default_name
   else
     printf '%s\n' "${dir##*/}"
   fi
@@ -103,7 +124,10 @@ _claude_profile_dirs() {
 
 # 자동 완성용 이름 목록
 _claude_profile_names() {
-  printf '%s\n' default
+  local dn
+  dn="$(_claude_profile_default_name)"
+  printf '%s\n' "$dn"
+  [ "$dn" = default ] || printf '%s\n' default
   _claude_profile_dirs | while IFS= read -r d; do
     printf '%s\n' "${d##*/}"
   done
@@ -228,7 +252,7 @@ claude-profiles() {
     printf '%s\n' "$HOME/.claude"
     _claude_profile_dirs
   } | while IFS= read -r dir; do
-    name=default
+    name="$(_claude_profile_default_name)"
     [ "$dir" != "$HOME/.claude" ] && name="${dir##*/}"
     mark="  "
     [ "$name" = "$active" ] && mark="* "
@@ -262,6 +286,12 @@ claude-with() {
     ( CLAUDE_CONFIG_DIR="$dir"; export CLAUDE_CONFIG_DIR; claude "$@" )
   fi
 }
+
+# 별칭을 쓸 수 없는 상황이면 셸을 열 때 한 번만 알려 줍니다.
+if [ "$CLAUDE_PROFILE_DEFAULT_NAME" != "$(_claude_profile_default_name)" ]; then
+  printf '%s\n' "claude-profiles: CLAUDE_PROFILE_DEFAULT_NAME='$CLAUDE_PROFILE_DEFAULT_NAME' 을 쓸 수 없어 default 를 씁니다." >&2
+  printf '%s\n' "  (이름 규칙에 어긋나거나 $CLAUDE_PROFILE_ROOT 에 같은 이름의 프로필이 있습니다.)" >&2
+fi
 
 # ---------------------------------------------------------------- 자동 완성
 # 셸 전용 문법은 eval 안에 둡니다. 반대쪽 셸은 파싱조차 하지 않습니다.

@@ -13,6 +13,8 @@ LIB_NAME='claude-profiles.sh'
 SRC_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 PREFIX="${CLAUDE_PROFILES_PREFIX:-$HOME/.local/share/claude-profiles}"
 SHELL_OPT=auto
+DEFAULT_NAME=default
+DEFAULT_NAME_SET=0
 DO_MIGRATE=1
 DRY_RUN=0
 SKIP_PROBE=0
@@ -23,6 +25,9 @@ usage() {
 
   --prefix DIR     스크립트 설치 위치 (기본: ~/.local/share/claude-profiles)
   --shell 대상     rc 등록 대상: auto | bash | zsh | both | none (기본: auto)
+  --default-name N 기본 프로필(~/.claude)을 부를 이름 (예: work-main)
+                   지정하지 않으면 이미 등록된 값을 그대로 둡니다.
+                   default 로 주면 별칭을 없앱니다.
   --no-migrate     기존 ~/.claude-profiles/profiles.zsh 등록을 정리하지 않음
   --skip-probe     claude 동작 확인(임시 설정 디렉터리 테스트)을 건너뜀
   --dry-run        무엇을 할지 보여주기만 하고 아무것도 바꾸지 않음
@@ -38,6 +43,8 @@ while [ $# -gt 0 ]; do
     --prefix=*)   PREFIX="${1#--prefix=}"; shift ;;
     --shell)      SHELL_OPT="${2:?--shell 에 값이 필요합니다}"; shift 2 ;;
     --shell=*)    SHELL_OPT="${1#--shell=}"; shift ;;
+    --default-name)   DEFAULT_NAME="${2:?--default-name 에 이름이 필요합니다}"; DEFAULT_NAME_SET=1; shift 2 ;;
+    --default-name=*) DEFAULT_NAME="${1#--default-name=}"; DEFAULT_NAME_SET=1; shift ;;
     --no-migrate) DO_MIGRATE=0; shift ;;
     --skip-probe) SKIP_PROBE=1; shift ;;
     --dry-run)    DRY_RUN=1; shift ;;
@@ -49,6 +56,11 @@ done
 case "$SHELL_OPT" in
   auto|bash|zsh|both|none) ;;
   *) printf -- '--shell 값은 auto|bash|zsh|both|none 중 하나여야 합니다: %s\n' "$SHELL_OPT" >&2; exit 2 ;;
+esac
+
+case "$DEFAULT_NAME" in
+  '' | . | .. | .* | *[!A-Za-z0-9._-]*)
+    printf -- '--default-name 은 영문/숫자/. _ - 만 쓸 수 있습니다: %s\n' "$DEFAULT_NAME" >&2; exit 2 ;;
 esac
 
 say()  { printf '%s\n' "$*"; }
@@ -121,8 +133,26 @@ rc_block() {
   printf '%s\n' "$BEGIN_MARK"
   printf '%s\n' "# Claude Code 계정 프로필 전환: claude-use / claude-who / claude-profiles / claude-with"
   printf '%s\n' "# 이 블록은 claude-profiles 패키지가 관리합니다. 제거는 uninstall.sh."
+  if [ -n "${1:-}" ] && [ "$1" != default ]; then
+    printf '%s\n' "CLAUDE_PROFILE_DEFAULT_NAME=$1"
+    printf '%s\n' "export CLAUDE_PROFILE_DEFAULT_NAME"
+  fi
   printf '%s\n' "[ -f \"$LIB_PATH\" ] && . \"$LIB_PATH\""
   printf '%s\n' "$END_MARK"
+}
+
+# 이미 등록된 블록에서 기본 프로필 이름을 읽습니다.
+# --default-name 없이 재설치할 때 설정이 조용히 사라지지 않게 합니다.
+rc_read_default_name() {
+  awk -v b="$BEGIN_MARK" -v e="$END_MARK" '
+    $0 == b { inb = 1; next }
+    $0 == e { inb = 0; next }
+    inb == 1 && index($0, "CLAUDE_PROFILE_DEFAULT_NAME=") == 1 {
+      v = substr($0, length("CLAUDE_PROFILE_DEFAULT_NAME=") + 1)
+      print v
+      exit
+    }
+  ' "$1"
 }
 
 # 마커 블록을 제거한 내용을 표준 출력으로
@@ -167,6 +197,13 @@ rc_register() {
   label="$2"
   had_legacy=0
 
+  # --default-name 을 주지 않았으면 이미 등록된 값을 유지합니다.
+  rc_name="$DEFAULT_NAME"
+  if [ "$DEFAULT_NAME_SET" -eq 0 ] && [ -f "$rc" ]; then
+    prev_name=$(rc_read_default_name "$rc")
+    [ -n "$prev_name" ] && rc_name="$prev_name"
+  fi
+
   if [ ! -f "$rc" ]; then
     say "  $label: $rc 가 없어 새로 만듭니다"
     [ "$DRY_RUN" -eq 0 ] && : > "$rc"
@@ -186,7 +223,7 @@ rc_register() {
   fi
   # 본문이 있으면 블록 앞에 빈 줄 하나
   [ -s "$tmp" ] && printf '\n' >> "$tmp"
-  rc_block >> "$tmp"
+  rc_block "$rc_name" >> "$tmp"
 
   # cmp/diff 가 없는 서버가 있어 셸만으로 비교합니다.
   if [ "$(cat "$tmp")" = "$(cat "$rc")" ]; then
@@ -205,7 +242,7 @@ rc_register() {
 
   if [ "$DRY_RUN" -eq 1 ]; then
     say "  $label: 아래 블록을 추가할 예정 ($rc)"
-    rc_block | sed 's/^/      /'
+    rc_block "$rc_name" | sed 's/^/      /'
     rm -f "$tmp"
     return 0
   fi
@@ -214,7 +251,11 @@ rc_register() {
   cp "$rc" "$backup"
   cat "$tmp" > "$rc"   # 원본 권한과 inode 유지
   rm -f "$tmp"
-  say "  $label: 등록 완료 (백업: $backup)"
+  if [ "$rc_name" != default ]; then
+    say "  $label: 등록 완료, 기본 프로필 이름 '$rc_name' (백업: $backup)"
+  else
+    say "  $label: 등록 완료 (백업: $backup)"
+  fi
 }
 
 step "4. 셸 rc 등록"
@@ -284,7 +325,7 @@ cat <<DONE
   bash: source ~/.bashrc
 
 두 번째 계정 등록:
-  claude-use personal     # 프로필 생성 및 이 셸에서 전환
+  claude-use <이름>       # 프로필 생성 및 이 셸에서 전환
   claude auth login       # 이 셸에서 두 번째 계정으로 로그인
   claude-who              # 계정 확인
 

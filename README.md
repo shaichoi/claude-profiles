@@ -55,6 +55,7 @@ cd claude-profiles
 | --- | --- |
 | `--prefix DIR` | 스크립트 설치 위치 (기본 `~/.local/share/claude-profiles`) |
 | `--shell auto\|bash\|zsh\|both\|none` | rc 등록 대상 (기본 `auto`) |
+| `--default-name <이름>` | 기본 프로필(`~/.claude`)을 부를 이름 (아래 참고) |
 | `--no-migrate` | 예전 `profiles.zsh` 등록을 정리하지 않음 |
 | `--skip-probe` | claude 동작 확인 건너뜀 |
 | `--dry-run` | 무엇을 할지 보여주기만 함 |
@@ -84,7 +85,8 @@ claude-who             # 확인
 | `claude-profiles` | 프로필 목록과 각 계정 표시 (`-q`는 계정 조회 생략) |
 | `claude-with <이름> [인자...]` | 셸 프로필은 그대로 두고 한 번만 그 계정으로 실행 |
 
-프로필 이름은 영문/숫자/`.`/`_`/`-`만 쓸 수 있습니다. `claude-use`와
+프로필 이름은 영문/숫자/`.`/`_`/`-`만 쓸 수 있습니다. 기본 프로필의 이름은
+`default`이고, `--default-name`으로 계정 이름을 붙일 수 있습니다(아래 참고). `claude-use`와
 `claude-with`는 탭 자동 완성이 됩니다.
 
 ### 두 번째 계정 등록
@@ -94,6 +96,39 @@ claude-use personal
 claude auth login
 claude-who
 ```
+
+### 기본 프로필에 계정 이름 붙이기
+
+메인 계정은 `~/.claude`에 그대로 두고 이름만 붙이는 방식을 권합니다.
+`~/.claude-profiles/` 밑으로 옮기면 그 계정을 다시 로그인해야 하고,
+전역 설정이 `~/.claude.json`에서 `<설정 디렉터리>/.claude.json`으로 바뀌면서
+아래 "알려진 함정"의 `email: null` 문제를 그대로 맞게 됩니다.
+
+```sh
+./install.sh --default-name work-main
+```
+
+그러면 `default` 대신 그 이름으로 보이고, 그 이름으로 전환할 수 있습니다.
+`default`라는 이름도 계속 통합니다.
+
+```
+$ claude-profiles
+* work-main   —  main@example.com / Acme / team
+  work-sub  —  sub@example.com / Acme / team
+```
+
+rc를 직접 고쳐도 됩니다. 등록 블록보다 **앞에** 두어야 합니다.
+
+```sh
+export CLAUDE_PROFILE_DEFAULT_NAME=work-main
+```
+
+`--default-name` 없이 다시 설치하면 이미 등록된 이름을 그대로 유지합니다.
+없애려면 `--default-name default`를 주세요.
+
+같은 이름의 프로필 디렉터리가 `~/.claude-profiles/`에 있으면 별칭을 포기하고
+`default`로 돌아갑니다. 별칭이 이기면 같은 이름의 프로필 계정에 영영 접근할 수
+없기 때문입니다. 이때는 셸을 열 때 한 번 경고가 나옵니다.
 
 ### 특정 프로필로 터미널 시작
 

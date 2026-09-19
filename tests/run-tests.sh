@@ -262,9 +262,82 @@ for sh_name in bash zsh; do
   check "$sh_name 프로필 전환/링크/차단" "$FUNC_EXPECTED" "$actual"
 done
 
+# ---------------------------------------------------------------- 기본 프로필 별칭
+
+head_ "7. 기본 프로필 별칭 (CLAUDE_PROFILE_DEFAULT_NAME)"
+ALIAS_PROBE="$TMPROOT/alias.sh"
+cat > "$ALIAS_PROBE" <<'PROBE'
+. "$LIB"
+printf 'NAME1=%s\n' "$(_claude_profile_name)"
+claude-use main >/dev/null
+printf 'AFTER_ALIAS=%s\n' "${CLAUDE_CONFIG_DIR-unset}"
+printf 'NAME2=%s\n' "$(_claude_profile_name)"
+claude-use sub >/dev/null
+printf 'SUB=%s\n' "${CLAUDE_CONFIG_DIR##*/}"
+claude-use default >/dev/null
+printf 'BACK=%s:%s\n' "${CLAUDE_CONFIG_DIR-unset}" "$(_claude_profile_name)"
+printf 'LIST=%s\n' "$(claude-profiles -q | tr -d ' \n')"
+printf 'COMPLETE=%s\n' "$(_claude_profile_names | tr '\n' ',')"
+PROBE
+ALIAS_EXPECTED='NAME1=main
+AFTER_ALIAS=unset
+NAME2=main
+SUB=sub
+BACK=unset:main
+LIST=*mainsub
+COMPLETE=main,default,sub,'
+for sh_name in bash zsh; do
+  command -v "$sh_name" >/dev/null 2>&1 || continue
+  rm -rf "$FAKE/.claude-profiles"
+  case "$sh_name" in
+    bash) actual=$(env -u CLAUDE_PROFILE_ROOT -u CLAUDE_CONFIG_DIR HOME="$FAKE" LIB="$SRC_DIR/claude-profiles.sh" CLAUDE_PROFILE_DEFAULT_NAME=main bash --noprofile --norc "$ALIAS_PROBE" 2>/dev/null) ;;
+    zsh)  actual=$(env -u CLAUDE_PROFILE_ROOT -u CLAUDE_CONFIG_DIR HOME="$FAKE" LIB="$SRC_DIR/claude-profiles.sh" CLAUDE_PROFILE_DEFAULT_NAME=main zsh -f "$ALIAS_PROBE" 2>/dev/null) ;;
+  esac
+  check "$sh_name 별칭 전환/표시/완성" "$ALIAS_EXPECTED" "$actual"
+done
+
+# 같은 이름의 프로필 디렉터리가 있으면 별칭을 포기해야 합니다 (그 계정이 가려지면 안 됨)
+COLLIDE_PROBE="$TMPROOT/collide.sh"
+cat > "$COLLIDE_PROBE" <<'PROBE'
+. "$LIB"
+printf 'NAME=%s\n' "$(_claude_profile_name)"
+claude-use main >/dev/null
+printf 'DIR=%s\n' "${CLAUDE_CONFIG_DIR##*/}"
+PROBE
+rm -rf "$FAKE/.claude-profiles"
+mkdir -p "$FAKE/.claude-profiles/main"
+collide=$(env -u CLAUDE_PROFILE_ROOT -u CLAUDE_CONFIG_DIR HOME="$FAKE" LIB="$SRC_DIR/claude-profiles.sh" CLAUDE_PROFILE_DEFAULT_NAME=main bash --noprofile --norc "$COLLIDE_PROBE" 2>/dev/null)
+check "이름 충돌 시 별칭 포기" 'NAME=default
+DIR=main' "$collide"
+collide_err=$(env -u CLAUDE_PROFILE_ROOT -u CLAUDE_CONFIG_DIR HOME="$FAKE" LIB="$SRC_DIR/claude-profiles.sh" CLAUDE_PROFILE_DEFAULT_NAME=main bash --noprofile --norc "$COLLIDE_PROBE" 2>&1 >/dev/null)
+case "$collide_err" in *"쓸 수 없어"*) ok "충돌을 셸 시작 때 한 번 경고" ;; *) ng "충돌 경고 없음: $collide_err" ;; esac
+
+# 잘못된 이름은 조용히 default 로
+bad=$(env -u CLAUDE_PROFILE_ROOT -u CLAUDE_CONFIG_DIR HOME="$FAKE" LIB="$SRC_DIR/claude-profiles.sh" CLAUDE_PROFILE_DEFAULT_NAME='../evil' bash --noprofile --norc -c '. "$LIB"; _claude_profile_name' 2>/dev/null)
+check "잘못된 별칭은 default 로" default "$bad"
+
+head_ "8. install.sh --default-name"
+rm -rf "$FAKE/.claude-profiles"
+dn_line() { sed -n 's/^CLAUDE_PROFILE_DEFAULT_NAME=//p' "$FAKE/.zshrc"; }
+run_install --default-name alpha >/dev/null 2>&1
+check "이름 지정 설치" alpha "$(dn_line)"
+check "마커는 여전히 1개" 1 "$(markers "$FAKE/.zshrc")"
+run_install --default-name beta >/dev/null 2>&1
+check "이름 변경" beta "$(dn_line)"
+out_keep=$(run_install 2>&1)
+check "이름 없이 재설치하면 유지" beta "$(dn_line)"
+case "$out_keep" in *"이미 최신 상태"*) ok "유지 시 rc 를 다시 쓰지 않음" ;; *) ng "유지인데 rc 를 다시 씀" ;; esac
+run_install --default-name default >/dev/null 2>&1
+check "default 로 되돌리면 줄 제거" "" "$(dn_line)"
+if (cd "$SRC_DIR" && env -u CLAUDE_PROFILE_ROOT HOME="$FAKE" sh ./install.sh --prefix "$PFX" --default-name '../evil' >/dev/null 2>&1); then
+  ng "잘못된 --default-name 을 받아들임"
+else
+  ok "잘못된 --default-name 거부"
+fi
+
 # ---------------------------------------------------------------- 실제 홈 무결성
 
-head_ "7. 실제 홈 디렉터리 무결성"
+head_ "9. 실제 홈 디렉터리 무결성"
 REAL_AFTER=$(snapshot_real_home)
 check "실제 rc 파일 변경 없음" "$REAL_BEFORE" "$REAL_AFTER"
 if [ -e "$REAL_HOME/.local/share/claude-profiles/claude-profiles.sh" ]; then
